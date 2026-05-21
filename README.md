@@ -74,15 +74,20 @@ macOS Keychain            Claude.app cookies (SQLite)
 
 前置：已经登录过 **Claude 桌面 app**（cookie 才在）。
 
-### 方案 A — 下载预编译版（推荐）
-
-到 [Releases](https://github.com/eastonsuo/claude-desktop-usage/releases/latest) 下 `Claude-Usage.app.zip`，解压后拖到 `/Applications`。
-
-**第一次启动**：因为 app 没有 Apple 开发者签名，macOS Gatekeeper 会拦。**右键 → Open → 在弹窗里再点 Open** 一次就行（只需一次）。或者命令行：
+### 方案 A — 一键安装（推荐）
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Claude Usage.app"
+curl -L -o /tmp/claude-usage.zip \
+  https://github.com/eastonsuo/claude-desktop-usage/releases/latest/download/Claude-Usage.app.zip \
+  && unzip -oq /tmp/claude-usage.zip -d /Applications/ \
+  && xattr -dr com.apple.quarantine "/Applications/Claude Usage.app" \
+  && rm /tmp/claude-usage.zip \
+  && open "/Applications/Claude Usage.app"
 ```
+
+干的事：拉最新 release → 解压到 `/Applications/` → 去除 quarantine（绕 Gatekeeper，因为 app 未签名）→ 启动。
+
+手动版（不想跑脚本）：到 [Releases](https://github.com/eastonsuo/claude-desktop-usage/releases/latest) 下 `Claude-Usage.app.zip`，解压拖到 `/Applications`，**右键 → Open → 在弹窗里再点 Open**（只需一次）即可绕过 Gatekeeper。
 
 ### 方案 B — 从源码编译
 
