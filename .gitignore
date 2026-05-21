@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.bak
+
+# Build outputs
+dist/
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+claude-usage-float
+
+# Never commit local exports of any cookie / keychain dumps
+cookies.json
+*.cookie
