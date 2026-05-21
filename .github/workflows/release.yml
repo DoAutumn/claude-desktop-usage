@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          swiftc --version
+          python3 --version
+          which iconutil
+
+      - name: Build .app bundle
+        run: |
+          chmod +x build_app.sh
+          ./build_app.sh
+
+      - name: Smoke-test Python pipeline (syntax only)
+        run: |
+          python3 -m py_compile claude_usage.py poc_fetch_usage.py swiftbar_plugin.py
+          echo "Python syntax OK"
+
+      - name: Zip the .app
+        working-directory: dist
+        run: |
+          zip -ry "Claude-Usage.app.zip" "Claude Usage.app"
+          ls -la
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create / update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          NOTES_FILE=$(mktemp)
+          cat > "$NOTES_FILE" <<'EOF'
+          ## Install (pre-built)
+
+          1. Download **Claude-Usage.app.zip** below.
+          2. Unzip — you get `Claude Usage.app`.
+          3. Drag to `/Applications`.
+          4. **First launch**: the app isn't notarized (no Apple Developer cert for a personal tool), so macOS Gatekeeper will block it. Bypass once via either:
+             - **Right-click** the app → **Open** → confirm in the dialog, or
+             - Terminal: `xattr -dr com.apple.quarantine "/Applications/Claude Usage.app"`
+
+          5. The first time the widget tries to fetch usage, macOS will prompt:
+             > `python wants to access "Claude Safe Storage"`
+
+             Click **Always Allow** — this is your Claude desktop app's keychain entry, used to decrypt the session cookies locally. (See [how it works](https://github.com/eastonsuo/claude-desktop-usage#how-it-works).)
+
+          ### Prerequisites
+          - macOS 11+
+          - You must already be **logged into the Claude desktop app** — the widget piggybacks on its existing browser session.
+
+          ### Open at login
+          System Settings → General → Login Items & Extensions → Open at Login → **+** → select `Claude Usage.app`.
+
+          ---
+
+          **This is unofficial and unaffiliated with Anthropic. Personal use only — please don't redistribute or hammer the endpoint.** See the [README](https://github.com/eastonsuo/claude-desktop-usage#disclaimer) for details.
+          EOF
+
+          gh release create "$TAG" \
+            "dist/Claude-Usage.app.zip" \
+            --title "$TAG" \
+            --notes-file "$NOTES_FILE" \
+            --verify-tag || \
+          gh release upload "$TAG" "dist/Claude-Usage.app.zip" --clobber
