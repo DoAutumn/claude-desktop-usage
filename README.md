@@ -6,6 +6,10 @@
 ![platform](https://img.shields.io/badge/platform-macOS%2011%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
+<p align="center">
+  <img src="assets/overview.png" alt="Claude Desktop Usage — 浮窗全貌 + 右键菜单" width="460">
+</p>
+
 ## 痛点
 
 用 Claude（Pro / Max 订阅）时总想知道自己还有多少额度：
