@@ -19,6 +19,8 @@
 
 ## What it looks like
 
+实际运行截图：
+
 <table>
   <tr>
     <td align="center" valign="top"><img src="assets/full.png" alt="Full mode — PLAN / WEEKLY 用量" width="230"><br><sub><b>Full mode</b>（默认）</sub></td>
