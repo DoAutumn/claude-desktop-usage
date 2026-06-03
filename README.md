@@ -19,7 +19,15 @@
 
 ## What it looks like
 
-两档（右键菜单切换）：
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="assets/full.png" alt="Full mode — PLAN / WEEKLY 用量" width="230"><br><sub><b>Full mode</b>（默认）</sub></td>
+    <td align="center" valign="top"><img src="assets/compact.png" alt="Compact mode — 5 小时窗口" width="230"><br><sub><b>Compact mode</b></sub></td>
+    <td align="center" valign="top"><img src="assets/menu.png" alt="右键菜单 — Refresh / Theme / Opacity" width="230"><br><sub><b>右键菜单</b></sub></td>
+  </tr>
+</table>
+
+下面是等价的 ASCII 示意，两档（右键菜单切换）：
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
