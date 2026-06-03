@@ -1,5 +1,7 @@
 # claude-desktop-usage
 
+**English** · [简体中文](README.zh-CN.md)
+
 > A tiny macOS floating widget that shows your Claude.ai usage at a glance — without opening the browser.
 
 ![status](https://img.shields.io/badge/stage-prototype-yellow)
@@ -7,33 +9,33 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
-  <img src="assets/overview.png" alt="Claude Desktop Usage — 浮窗全貌 + 右键菜单" width="460">
+  <img src="assets/overview.png" alt="Claude Desktop Usage — full widget + right-click menu" width="460">
 </p>
 
-## 痛点
+## The problem
 
-用 Claude（Pro / Max 订阅）时总想知道自己还有多少额度：
-- 这 5 小时窗口还能不能接着用？
-- 7 天周配额烧到哪了？
-- 离重置还有多久？
+When you use Claude (Pro / Max), you always want to know how much quota you have left:
+- Can I keep going in this 5-hour window?
+- How far has the 7-day weekly quota been burned?
+- How long until it resets?
 
-打开网页 → 登录 → 进 Settings → 滚到 Usage 部分 —— 一天里查个三五次太烦。
+Open the browser → log in → Settings → scroll to the Usage section — checking that several times a day gets old fast.
 
-这个工具把这些信息常驻在桌面右上角的一个小浮窗里，不用切窗口就能瞟一眼。
+This tool keeps that info parked in a small floating widget in the top-right corner of your desktop, so you can glance at it without switching windows.
 
 ## What it looks like
 
-实际运行截图：
+Live screenshots:
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="assets/full.png" alt="Full mode — PLAN / WEEKLY 用量" width="230"><br><sub><b>Full mode</b>（默认）</sub></td>
-    <td align="center" valign="top"><img src="assets/compact.png" alt="Compact mode — 5 小时窗口" width="230"><br><sub><b>Compact mode</b></sub></td>
-    <td align="center" valign="top"><img src="assets/menu.png" alt="右键菜单 — Refresh / Theme / Opacity" width="230"><br><sub><b>右键菜单</b></sub></td>
+    <td align="center" valign="top"><img src="assets/full.png" alt="Full mode — PLAN / WEEKLY usage" width="230"><br><sub><b>Full mode</b> (default)</sub></td>
+    <td align="center" valign="top"><img src="assets/compact.png" alt="Compact mode — 5-hour window" width="230"><br><sub><b>Compact mode</b></sub></td>
+    <td align="center" valign="top"><img src="assets/menu.png" alt="Right-click menu — Refresh / Theme / Opacity" width="230"><br><sub><b>Right-click menu</b></sub></td>
   </tr>
 </table>
 
-下面是等价的 ASCII 示意，两档（右键菜单切换）：
+Equivalent ASCII sketch, two modes (toggled from the right-click menu):
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
@@ -51,15 +53,15 @@
    ↑ Full mode (default)
 ```
 
-- 始终置顶（可关）
-- 拖动任意位置，自动记忆
-- 5h 利用率 ≥75% 变黄、≥90% 变红
-- 右键菜单：Refresh / Open Claude.ai / Always on Top / Compact View / Theme (System/Dark/Light) / Opacity (50/65/80/100%) / Refresh Every (1/5/15/30 min)
-- 无 Dock 图标，安静常驻
+- Always on top (can be turned off)
+- Drag it anywhere, position is remembered
+- 5h utilization turns yellow at ≥75%, red at ≥90%
+- Right-click menu: Refresh / Open Claude.ai / Always on Top / Compact View / Theme (System/Dark/Light) / Opacity (50/65/80/100%) / Refresh Every (1/5/15/30 min)
+- No Dock icon, quietly resident
 
 ## How it works
 
-数据走你已经登录的 **Claude 桌面 app** 的本地 session — 不需要二次登录、不需要 API key。
+Data comes through your already-logged-in **Claude desktop app** local session — no second login, no API key.
 
 ```
 macOS Keychain            Claude.app cookies (SQLite)
@@ -69,7 +71,7 @@ macOS Keychain            Claude.app cookies (SQLite)
        ▼                            ▼
   AES-128 key  ────────►  sessionKey / cf_clearance / __cf_bm / ...
                                      │
-                                     │ Cookie 头 + Claude.app's exact UA
+                                     │ Cookie header + Claude.app's exact UA
                                      │ (Claude/x.y Chrome/z.w Electron/v Safari/...)
                                      ▼
                   GET claude.ai/api/organizations/<org>/usage
@@ -78,17 +80,17 @@ macOS Keychain            Claude.app cookies (SQLite)
                   { five_hour: {...}, seven_day: {...}, ... }
 ```
 
-实现分三层：
+Three layers:
 
-- `claude_usage.py`：数据通路（库，stdlib only）—— 读 Keychain、解密 cookie、构造 Claude.app UA、走 `curl` 请求
-- `poc_fetch_usage.py`：CLI 验证脚本，打印完整 JSON
-- `float_widget.swift` + `build_app.sh` → `Claude Usage.app`：原生 macOS 浮窗
+- `claude_usage.py`: the data path (a library, stdlib only) — reads the Keychain, decrypts the cookie, builds the Claude.app UA, makes the request via `curl`
+- `poc_fetch_usage.py`: a CLI verification script that prints the full JSON
+- `float_widget.swift` + `build_app.sh` → `Claude Usage.app`: the native macOS floating window
 
 ## Install
 
-前置：已经登录过 **Claude 桌面 app**（cookie 才在）。
+Prerequisite: you've logged into the **Claude desktop app** before (so the cookie exists).
 
-### 方案 A — 一键安装（推荐）
+### Option A — one-line install (recommended)
 
 ```bash
 curl -L -o /tmp/claude-usage.zip \
@@ -99,53 +101,53 @@ curl -L -o /tmp/claude-usage.zip \
   && open "/Applications/Claude Usage.app"
 ```
 
-干的事：拉最新 release → 解压到 `/Applications/` → 去除 quarantine（绕 Gatekeeper，因为 app 未签名）→ 启动。
+What it does: pull the latest release → unzip into `/Applications/` → strip quarantine (bypass Gatekeeper, since the app is unsigned) → launch.
 
-手动版（不想跑脚本）：到 [Releases](https://github.com/eastonsuo/claude-desktop-usage/releases/latest) 下 `Claude-Usage.app.zip`，解压拖到 `/Applications`，**右键 → Open → 在弹窗里再点 Open**（只需一次）即可绕过 Gatekeeper。
+Manual (if you'd rather not run a script): grab `Claude-Usage.app.zip` from [Releases](https://github.com/eastonsuo/claude-desktop-usage/releases/latest), unzip and drag it to `/Applications`, then **right-click → Open → click Open again in the dialog** (only once) to get past Gatekeeper.
 
-### 方案 B — 从源码编译
+### Option B — build from source
 
 ```bash
 git clone https://github.com/eastonsuo/claude-desktop-usage.git
 cd claude-desktop-usage
-./build_app.sh                          # 产物：dist/Claude Usage.app
+./build_app.sh                          # output: dist/Claude Usage.app
 
-open "dist/Claude Usage.app"             # 首次运行
-cp -R "dist/Claude Usage.app" /Applications/   # 装到 Applications
+open "dist/Claude Usage.app"             # first run
+cp -R "dist/Claude Usage.app" /Applications/   # install to Applications
 ```
 
-### 第一次跑时的 Keychain 授权
+### Keychain authorization on first run
 
-首次抓取用量时会弹一次 macOS 系统弹窗：`python wants to access 'Claude Safe Storage'` —— 点 **Always Allow**。同一个 Python 解释器之后就不会再问。
+The first time it fetches usage, macOS shows one system prompt: `python wants to access 'Claude Safe Storage'` — click **Always Allow**. The same Python interpreter won't ask again.
 
-### 开机自启
+### Launch at login
 
-装到 `/Applications` 后，**System Settings → General → Login Items & Extensions → Open at Login → "+"** → 选 `Claude Usage.app`。
+After installing to `/Applications`, go to **System Settings → General → Login Items & Extensions → Open at Login → "+"** and choose `Claude Usage.app`.
 
-## Caveats / 已知约束
+## Caveats
 
-- **仅 macOS**：cookie 解密走 macOS Keychain；其他平台没人写过
-- **接口非公开**：claude.ai 前端自己用的内部端点，Anthropic 可能随时改。挂了的话先抓网页里那个 `/api/.../usage` 请求对比
-- **Claude.app 升级会让 cf_clearance 重签**：`claude_usage.py` 每次现读 Claude.app 的 plist + Electron framework 二进制构造 UA 自动跟上版本号 —— 但如果 app 改了 UA 结构，需要重新调试
-- **节制刷新**：5h / 7d 数据变化慢，1–5 min 就够；过密会被 rate limit
+- **macOS only**: cookie decryption goes through the macOS Keychain; nobody has written it for other platforms
+- **Non-public endpoint**: it's an internal endpoint claude.ai's own frontend uses, and Anthropic may change it at any time. If it breaks, capture the `/api/.../usage` request in the web app and compare
+- **Claude.app upgrades re-sign cf_clearance**: `claude_usage.py` reads Claude.app's plist + Electron framework binary live each time to build a UA that tracks the version automatically — but if the app changes its UA structure, it needs re-debugging
+- **Refresh sparingly**: 5h / 7d data changes slowly, 1–5 min is plenty; too frequent and you'll get rate-limited
 
 ## Debug
 
 ```bash
-# 看完整 JSON
+# see the full JSON
 python3 poc_fetch_usage.py
 
-# 看抓到的 UA / cookie 名 / HTTP 状态
+# see the captured UA / cookie names / HTTP status
 CLAUDE_USAGE_DEBUG=1 python3 poc_fetch_usage.py 2>&1 >/dev/null | grep claude_usage
 
-# 手工覆盖 UA（极端情况）
+# manually override the UA (extreme cases)
 CLAUDE_USAGE_UA='...' python3 poc_fetch_usage.py
 
-# 开发模式跑 raw binary（不打包成 .app）
+# dev mode: run the raw binary (not packaged as .app)
 swiftc -O -o claude-usage-float float_widget.swift
-./claude-usage-float                   # 从 cwd 找 poc_fetch_usage.py
+./claude-usage-float                   # finds poc_fetch_usage.py from cwd
 
-# 重置浮窗位置 / 主题 / 透明度 / 刷新间隔
+# reset widget position / theme / opacity / refresh interval
 defaults delete io.github.claude-desktop-usage
 ```
 
