@@ -157,6 +157,10 @@ defaults delete io.github.claude-desktop-usage
 
 **For personal use only.** Please don't redistribute pre-built binaries, run it on a schedule that hammers the endpoint, or otherwise create load that would draw rate-limiting or unwanted attention. The whole point is to glance at your own usage occasionally.
 
+## Related
+
+- **[claude-code-statusline-usage](https://github.com/eastonsuo/claude-code-statusline-usage)** — a non-invasive realtime usage status line for the Claude Code terminal (model, context %, rate limits, cost).
+
 ## License
 
 [MIT](./LICENSE)

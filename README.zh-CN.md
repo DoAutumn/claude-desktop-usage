@@ -157,6 +157,10 @@ defaults delete io.github.claude-desktop-usage
 
 **仅供个人使用。** 请勿二次分发预编译产物、勿按计划任务高频敲打端点、勿制造会招致限流或不必要关注的负载。这工具的全部意义只是让你偶尔瞟一眼自己的用量。
 
+## 相关项目
+
+- **[claude-code-statusline-usage](https://github.com/eastonsuo/claude-code-statusline-usage)** —— 给 Claude Code 终端加一行非侵入式实时用量状态行（模型、上下文 %、额度、花费）。
+
 ## License
 
 [MIT](./LICENSE)
