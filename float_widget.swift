@@ -1,42 +1,18 @@
-// Floating Claude.ai usage widget — compact single-pane layout patterned
-// after the official claude.ai billing page. Build via ./build_app.sh.
+// Menu-bar Claude.ai usage app. The status item shows the 5-hour bucket
+// (title / reset countdown / progress bar / percent); clicking it opens a
+// popover with the weekly + per-model buckets and the action rows.
+// Build via ./build_app.sh.
 
 import Cocoa
 
 // MARK: - UI scale
 
-/// Global UI scale factor. Multiply every hard-coded font size and dimension by
-/// this so the whole widget grows/shrinks together. Bump to enlarge the widget.
+/// Global UI scale factor for the popover contents. Multiply hard-coded font
+/// sizes and dimensions by this so the popover grows/shrinks together.
 let uiScale: CGFloat = 1.2
 @inline(__always) func sc(_ v: CGFloat) -> CGFloat { (v * uiScale).rounded() }
 
 // MARK: - Settings
-
-enum Theme: String, CaseIterable {
-    case system, dark, light
-
-    var displayName: String {
-        switch self {
-        case .system: return "System"
-        case .dark: return "Dark"
-        case .light: return "Light"
-        }
-    }
-
-    var material: NSVisualEffectView.Material { .popover }
-
-    var appearance: NSAppearance? {
-        switch self {
-        case .system: return nil
-        case .dark: return NSAppearance(named: .darkAqua)
-        case .light: return NSAppearance(named: .aqua)
-        }
-    }
-}
-
-enum ViewMode: String, CaseIterable {
-    case full, compact
-}
 
 struct RefreshChoice {
     static let options: [(label: String, seconds: TimeInterval)] = [
@@ -47,32 +23,8 @@ struct RefreshChoice {
     ]
 }
 
-struct OpacityChoice {
-    static let options: [(label: String, value: Double)] = [
-        ("50%", 0.50),
-        ("65%", 0.65),
-        ("80%", 0.80),
-        ("100%", 1.00),
-    ]
-}
-
 enum Settings {
-    private static let themeKey = "theme"
     private static let intervalKey = "refreshInterval"
-    private static let originKey = "windowOrigin"
-    private static let pinKey = "alwaysOnTop"
-    private static let opacityKey = "opacity"
-    private static let modeKey = "viewMode"
-
-    static var viewMode: ViewMode {
-        get { ViewMode(rawValue: UserDefaults.standard.string(forKey: modeKey) ?? "") ?? .full }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: modeKey) }
-    }
-
-    static var theme: Theme {
-        get { Theme(rawValue: UserDefaults.standard.string(forKey: themeKey) ?? "") ?? .system }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: themeKey) }
-    }
 
     static var refreshInterval: TimeInterval {
         get {
@@ -80,35 +32,6 @@ enum Settings {
             return v > 0 ? v : 300
         }
         set { UserDefaults.standard.set(newValue, forKey: intervalKey) }
-    }
-
-    static var alwaysOnTop: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: pinKey) == nil { return true }
-            return UserDefaults.standard.bool(forKey: pinKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: pinKey) }
-    }
-
-    static var opacity: Double {
-        get {
-            let v = UserDefaults.standard.double(forKey: opacityKey)
-            return v > 0 ? v : 1.0
-        }
-        set { UserDefaults.standard.set(newValue, forKey: opacityKey) }
-    }
-
-    static var savedOrigin: NSPoint? {
-        get {
-            guard let s = UserDefaults.standard.string(forKey: originKey) else { return nil }
-            let p = NSPointFromString(s)
-            return (p.x == 0 && p.y == 0) ? nil : p
-        }
-        set {
-            if let p = newValue {
-                UserDefaults.standard.set(NSStringFromPoint(p), forKey: originKey)
-            }
-        }
     }
 }
 
@@ -125,10 +48,10 @@ let barBackgroundColor: NSColor = NSColor(
     name: nil,
     dynamicProvider: { appearance in
         let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        return isDark ? NSColor(white: 0.30, alpha: 1.0) : NSColor(white: 0.89, alpha: 1.0)
+        return isDark ? NSColor(white: 0.42, alpha: 1.0) : NSColor(white: 0.74, alpha: 1.0)
     })
 
-// MARK: - Data
+// MARK: - Data (unchanged fetch pipeline)
 
 struct Usage {
     struct Bucket {
@@ -243,7 +166,93 @@ final class ProgressBar: NSView {
     }
 }
 
-// MARK: - Metric block
+// MARK: - Status-bar 5-hour view
+
+/// The custom view embedded in the menu-bar status item. Mirrors the layout in
+/// the spec: "5-hour" title with a reset countdown beneath it, a progress bar,
+/// and the percentage. Sized small to fit the menu-bar height.
+final class StatusBarUsageView: NSView {
+    private let titleLabel = NSTextField(labelWithString: "5-hour")
+    private let subtitleLabel = NSTextField(labelWithString: "—")
+    private let bar = ProgressBar()
+    private let pctLabel = NSTextField(labelWithString: "—")
+    private var resetsAt: Date?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .systemFont(ofSize: 9.5, weight: .semibold)
+        titleLabel.textColor = .labelColor
+
+        subtitleLabel.font = .monospacedDigitSystemFont(ofSize: 8, weight: .regular)
+        subtitleLabel.textColor = .secondaryLabelColor
+
+        pctLabel.font = .monospacedDigitSystemFont(ofSize: 9.5, weight: .regular)
+        pctLabel.textColor = .secondaryLabelColor
+        pctLabel.alignment = .right
+
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        pctLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            bar.widthAnchor.constraint(equalToConstant: 46),
+            bar.heightAnchor.constraint(equalToConstant: 5),
+            pctLabel.widthAnchor.constraint(equalToConstant: 28),
+        ])
+
+        let vstack = NSStackView(views: [titleLabel, subtitleLabel])
+        vstack.orientation = .vertical
+        vstack.alignment = .leading
+        vstack.spacing = 0
+
+        let main = NSStackView(views: [vstack, bar, pctLabel])
+        main.orientation = .horizontal
+        main.alignment = .centerY
+        main.spacing = 5
+        main.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(main)
+        NSLayoutConstraint.activate([
+            main.leadingAnchor.constraint(equalTo: leadingAnchor),
+            main.trailingAnchor.constraint(equalTo: trailingAnchor),
+            main.topAnchor.constraint(equalTo: topAnchor),
+            main.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // Let clicks fall through to the status-item button so it can open the popover.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func update(_ bucket: Usage.Bucket?) {
+        guard let b = bucket else { showError(); return }
+        resetsAt = b.resetsAt
+        let color = tierColor(forUtilization: b.pct)
+        bar.fillColor = color
+        bar.value = b.pct
+        if let v = b.pct {
+            pctLabel.stringValue = String(format: "%.0f%%", v)
+            pctLabel.textColor = (v < 75) ? .secondaryLabelColor : color
+        } else {
+            pctLabel.stringValue = "—"
+            pctLabel.textColor = .secondaryLabelColor
+        }
+        refreshCountdown()
+    }
+
+    func refreshCountdown() {
+        subtitleLabel.stringValue = formatCountdown(resetsAt)
+    }
+
+    func showError() {
+        bar.value = nil
+        pctLabel.stringValue = "—"
+        pctLabel.textColor = .secondaryLabelColor
+        subtitleLabel.stringValue = "error"
+    }
+}
+
+// MARK: - Metric block (popover rows)
 
 final class MetricBlock {
     enum Layout { case full, compact }
@@ -251,7 +260,6 @@ final class MetricBlock {
     let name: String
     let layout: Layout
     let titleLabel = NSTextField(labelWithString: "")
-    let subtitleIcon = NSImageView()
     let subtitleLabel = NSTextField(labelWithString: "")
     let bar = ProgressBar()
     let pctLabel = NSTextField(labelWithString: "")
@@ -274,17 +282,6 @@ final class MetricBlock {
         subtitleLabel.font = .monospacedDigitSystemFont(ofSize: sc(9), weight: .regular)
         subtitleLabel.textColor = .secondaryLabelColor
 
-        let iconCfg = NSImage.SymbolConfiguration(pointSize: sc(8), weight: .semibold)
-        subtitleIcon.image = NSImage(
-            systemSymbolName: "arrow.clockwise", accessibilityDescription: "resets in"
-        )?.withSymbolConfiguration(iconCfg)
-        subtitleIcon.contentTintColor = .tertiaryLabelColor
-        subtitleIcon.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            subtitleIcon.widthAnchor.constraint(equalToConstant: sc(8)),
-            subtitleIcon.heightAnchor.constraint(equalToConstant: sc(8)),
-        ])
-
         pctLabel.font = .monospacedDigitSystemFont(ofSize: sc(9), weight: .regular)
         pctLabel.textColor = .secondaryLabelColor
         pctLabel.alignment = .right
@@ -299,11 +296,7 @@ final class MetricBlock {
 
         let leftGroup: NSView
         if layout == .full {
-            let subtitleStack = NSStackView(views: [subtitleIcon, subtitleLabel])
-            subtitleStack.orientation = .horizontal
-            subtitleStack.alignment = .centerY
-            subtitleStack.spacing = sc(2)
-            let vstack = NSStackView(views: [titleLabel, subtitleStack])
+            let vstack = NSStackView(views: [titleLabel, subtitleLabel])
             vstack.orientation = .vertical
             vstack.alignment = .leading
             vstack.spacing = sc(1)
@@ -339,13 +332,7 @@ final class MetricBlock {
 
     func refreshCountdown() {
         guard layout == .full else { return }
-        if let r = lastResetsAt {
-            subtitleLabel.stringValue = formatCountdown(r)
-            subtitleIcon.isHidden = false
-        } else {
-            subtitleLabel.stringValue = "—"
-            subtitleIcon.isHidden = true
-        }
+        subtitleLabel.stringValue = formatCountdown(lastResetsAt)
     }
 
     func showError() {
@@ -354,145 +341,225 @@ final class MetricBlock {
         pctLabel.textColor = .secondaryLabelColor
         if layout == .full {
             subtitleLabel.stringValue = "error"
-            subtitleIcon.isHidden = true
         }
     }
 }
 
-// MARK: - Window
+// MARK: - Menu row
 
-final class FloatingPanel: NSPanel {
-    init() {
-        let size = NSSize(width: sc(170), height: sc(192))
-        super.init(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        level = Settings.alwaysOnTop ? .floating : .normal
-        isMovableByWindowBackground = true
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = true
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+/// A full-width clickable row used for the popover's action items. Unlike
+/// NSButton it places its label flush at the row's leading edge (so it lines up
+/// exactly with the section headers above) and honors an explicit height.
+final class MenuRow: NSView {
+    private let onClick: (() -> Void)?
+    private let innerPad: CGFloat
+    private var trackingArea: NSTrackingArea?
+    private var hovering = false { didSet { updateHighlight() } }
 
-        if let origin = Settings.savedOrigin {
-            setFrameOrigin(origin)
-        } else if let visible = NSScreen.main?.visibleFrame {
-            setFrameOrigin(
-                NSPoint(
-                    x: visible.maxX - size.width - 16,
-                    y: visible.maxY - size.height - 16))
-        }
+    init(width: CGFloat, height: CGFloat, innerPad: CGFloat, onClick: (() -> Void)?) {
+        self.onClick = onClick
+        self.innerPad = innerPad
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = sc(4)
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: width),
+            heightAnchor.constraint(equalToConstant: height),
+        ])
     }
-    override var canBecomeKey: Bool { true }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    @discardableResult
+    func addLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: sc(11))
+        label.textColor = .labelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: innerPad),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        return label
+    }
+
+    func addTrailing(_ view: NSView) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(view)
+        NSLayoutConstraint.activate([
+            view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -innerPad),
+            view.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = trackingArea { removeTrackingArea(t) }
+        let t = NSTrackingArea(
+            rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(t)
+        trackingArea = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { if onClick != nil { hovering = true } }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) { onClick?() }
+
+    private func updateHighlight() {
+        layer?.backgroundColor =
+            hovering ? NSColor.labelColor.withAlphaComponent(0.10).cgColor : NSColor.clear.cgColor
+    }
 }
 
-// MARK: - Content view
+// MARK: - Popover content
 
-final class ContentView: NSView {
-    let fiveHourBlock = MetricBlock(name: "5-hour", layout: .full)
+final class PopoverView: NSView {
     let sevenDayBlock = MetricBlock(name: "All models", layout: .full)
     let sonnetBlock = MetricBlock(name: "Sonnet", layout: .compact)
     let opusBlock = MetricBlock(name: "Opus", layout: .compact)
     let oauthBlock = MetricBlock(name: "Apps", layout: .compact)
-    let planUsageHeader = ContentView.makeSectionHeader("PLAN")
-    let weeklyHeader = ContentView.makeSectionHeader("WEEKLY")
+    private let intervalPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
-    weak var appDelegate: AppDelegate?
-    private let blur = NSVisualEffectView()
-    private let mainStack = NSStackView()
+    private weak var appDelegate: AppDelegate?
+    // Two levels of inset, menu-style:
+    //   popover edge -> outerPad -> row highlight -> innerPad -> text.
+    // textWidth matches a full metric row (left group + bar + percent), so the
+    // bars/percent line up with the action labels and the popup above/below.
+    private let outerPad = sc(8)
+    private let innerPad = sc(4)
+    private let textWidth = sc(60) + sc(56) + sc(26) + sc(5) * 2
+    // A row spans the full highlight width: the text column plus inner padding
+    // on both sides.
+    private var rowWidth: CGFloat { textWidth + innerPad * 2 }
 
-    static func makeSectionHeader(_ text: String) -> NSTextField {
+    init(appDelegate: AppDelegate) {
+        self.appDelegate = appDelegate
+        super.init(frame: .zero)
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = sc(6)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        // Outer inset: keep the row highlights away from the popover edges.
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: outerPad),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -outerPad),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: sc(10)),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -sc(8)),
+        ])
+
+        let weeklyHeader = paddedRow(sectionHeader("WEEKLY"))
+        let modelsHeader = paddedRow(sectionHeader("MODELS"))
+        let refreshNow = actionRow("Refresh Now") { [weak self] in self?.appDelegate?.refresh() }
+        let openClaude = actionRow("Open Claude.ai") { [weak self] in self?.appDelegate?.openClaude() }
+        let intervalRow = makeIntervalRow()
+        let quit = actionRow("Quit") { NSApp.terminate(nil) }
+        let topSeparator = separator()
+        let bottomSeparator = separator()
+
+        let sevenDayRow = paddedRow(sevenDayBlock.view)
+        let oauthRow = paddedRow(oauthBlock.view)
+
+        stack.addArrangedSubview(weeklyHeader)
+        stack.addArrangedSubview(sevenDayRow)
+        stack.addArrangedSubview(modelsHeader)
+        stack.addArrangedSubview(paddedRow(sonnetBlock.view))
+        stack.addArrangedSubview(paddedRow(opusBlock.view))
+        stack.addArrangedSubview(oauthRow)
+        stack.addArrangedSubview(topSeparator)
+        stack.addArrangedSubview(refreshNow)
+        stack.addArrangedSubview(openClaude)
+        stack.addArrangedSubview(intervalRow)
+        stack.addArrangedSubview(bottomSeparator)
+        stack.addArrangedSubview(quit)
+
+        stack.setCustomSpacing(sc(4), after: weeklyHeader)
+        stack.setCustomSpacing(sc(9), after: sevenDayRow)
+        stack.setCustomSpacing(sc(4), after: modelsHeader)
+        stack.setCustomSpacing(sc(6), after: oauthRow)
+        stack.setCustomSpacing(sc(4), after: topSeparator)
+        stack.setCustomSpacing(sc(1), after: refreshNow)
+        stack.setCustomSpacing(sc(1), after: openClaude)
+        stack.setCustomSpacing(sc(4), after: intervalRow)
+        stack.setCustomSpacing(sc(4), after: bottomSeparator)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func sectionHeader(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: sc(8), weight: .bold)
         label.textColor = .tertiaryLabelColor
         return label
     }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = sc(10)
-        layer?.masksToBounds = true
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.4).cgColor
-
-        blur.frame = bounds
-        blur.state = .active
-        blur.blendingMode = .behindWindow
-        blur.autoresizingMask = [.width, .height]
-        addSubview(blur)
-
-        mainStack.orientation = .vertical
-        mainStack.alignment = .leading
-        mainStack.spacing = sc(3)
-        mainStack.edgeInsets = NSEdgeInsets(top: sc(10), left: sc(10), bottom: sc(10), right: sc(10))
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(mainStack)
+    /// Wrap non-highlight content (headers, metric rows) in a full row-width
+    /// container with the same inner padding as the action rows, so their text
+    /// lines up with the action labels.
+    private func paddedRow(_ content: NSView) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        content.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(content)
         NSLayoutConstraint.activate([
-            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            mainStack.topAnchor.constraint(equalTo: topAnchor),
-            mainStack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            container.widthAnchor.constraint(equalToConstant: rowWidth),
+            content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: innerPad),
+            content.topAnchor.constraint(equalTo: container.topAnchor),
+            content.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
-
-        mainStack.addArrangedSubview(planUsageHeader)
-        mainStack.addArrangedSubview(fiveHourBlock.view)
-        mainStack.addArrangedSubview(weeklyHeader)
-        mainStack.addArrangedSubview(sevenDayBlock.view)
-        mainStack.addArrangedSubview(sonnetBlock.view)
-        mainStack.addArrangedSubview(opusBlock.view)
-        mainStack.addArrangedSubview(oauthBlock.view)
-
-        mainStack.setCustomSpacing(sc(5), after: planUsageHeader)
-        mainStack.setCustomSpacing(sc(13), after: fiveHourBlock.view)
-        mainStack.setCustomSpacing(sc(5), after: weeklyHeader)
-        mainStack.setCustomSpacing(sc(10), after: sevenDayBlock.view)
-        mainStack.setCustomSpacing(sc(8), after: sonnetBlock.view)
-        mainStack.setCustomSpacing(sc(8), after: opusBlock.view)
-
-        applyTheme(Settings.theme)
-        applyOpacity(Settings.opacity)
-        applyMode(Settings.viewMode)
+        return container
     }
 
-    required init?(coder: NSCoder) { fatalError() }
-
-    func applyTheme(_ theme: Theme) {
-        blur.material = theme.material
-        appearance = theme.appearance
-        window?.appearance = theme.appearance
+    private func separator() -> NSView {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.widthAnchor.constraint(equalToConstant: rowWidth).isActive = true
+        return box
     }
 
-    func applyMode(_ mode: ViewMode) {
-        let compact = (mode == .compact)
-        // Compact mode hides everything except the 5-hour block, no headers.
-        planUsageHeader.isHidden = compact
-        weeklyHeader.isHidden = compact
-        sevenDayBlock.view.isHidden = compact
-        sonnetBlock.view.isHidden = compact
-        opusBlock.view.isHidden = compact
-        oauthBlock.view.isHidden = compact
+    private func actionRow(_ title: String, onClick: @escaping () -> Void) -> MenuRow {
+        let row = MenuRow(width: rowWidth, height: sc(14), innerPad: innerPad, onClick: onClick)
+        row.addLabel(title)
+        return row
     }
 
-    func applyOpacity(_ value: Double) {
-        // Only fade the frosted-glass background — keep bar + text fully
-        // opaque so they remain readable at low opacity.
-        blur.alphaValue = CGFloat(value)
-        layer?.borderColor =
-            NSColor.separatorColor.withAlphaComponent(0.4 * value).cgColor
+    private func makeIntervalRow() -> MenuRow {
+        let row = MenuRow(width: rowWidth, height: sc(18), innerPad: innerPad, onClick: nil)
+        row.addLabel("Refresh Every")
+
+        for opt in RefreshChoice.options {
+            intervalPopup.addItem(withTitle: opt.label)
+            intervalPopup.lastItem?.representedObject = opt.seconds
+        }
+        intervalPopup.target = appDelegate
+        intervalPopup.action = #selector(AppDelegate.setInterval(_:))
+        intervalPopup.font = .systemFont(ofSize: sc(10))
+        intervalPopup.controlSize = .small
+        syncIntervalSelection()
+        row.addTrailing(intervalPopup)
+        return row
+    }
+
+    func syncIntervalSelection() {
+        for item in intervalPopup.itemArray {
+            if let s = item.representedObject as? TimeInterval, s == Settings.refreshInterval {
+                intervalPopup.select(item)
+                return
+            }
+        }
     }
 
     func update(_ usage: Usage?) {
         guard let u = usage else {
-            [fiveHourBlock, sevenDayBlock, sonnetBlock, opusBlock, oauthBlock].forEach {
-                $0.showError()
-            }
+            [sevenDayBlock, sonnetBlock, opusBlock, oauthBlock].forEach { $0.showError() }
             return
         }
-        fiveHourBlock.update(u.fiveHour)
         sevenDayBlock.update(u.sevenDay)
         sonnetBlock.update(u.sevenDaySonnet)
         opusBlock.update(u.sevenDayOpus)
@@ -500,140 +567,67 @@ final class ContentView: NSView {
     }
 
     func tickCountdowns() {
-        [fiveHourBlock, sevenDayBlock].forEach { $0.refreshCountdown() }
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        guard let d = appDelegate else { return }
-        let menu = NSMenu()
-
-        let refreshNow = NSMenuItem(
-            title: "Refresh Now", action: #selector(AppDelegate.refresh), keyEquivalent: "r")
-        refreshNow.target = d
-        menu.addItem(refreshNow)
-
-        let open = NSMenuItem(
-            title: "Open Claude.ai", action: #selector(AppDelegate.openClaude), keyEquivalent: "")
-        open.target = d
-        menu.addItem(open)
-
-        menu.addItem(.separator())
-
-        let pin = NSMenuItem(
-            title: "Always on Top", action: #selector(AppDelegate.toggleAlwaysOnTop),
-            keyEquivalent: "")
-        pin.target = d
-        pin.state = Settings.alwaysOnTop ? .on : .off
-        menu.addItem(pin)
-
-        let compact = NSMenuItem(
-            title: "Compact View", action: #selector(AppDelegate.toggleCompact),
-            keyEquivalent: "")
-        compact.target = d
-        compact.state = Settings.viewMode == .compact ? .on : .off
-        menu.addItem(compact)
-
-        menu.addItem(themeSubmenu(target: d))
-        menu.addItem(opacitySubmenu(target: d))
-        menu.addItem(intervalSubmenu(target: d))
-
-        menu.addItem(.separator())
-
-        let quit = NSMenuItem(
-            title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func themeSubmenu(target: AppDelegate) -> NSMenuItem {
-        let parent = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for t in Theme.allCases {
-            let item = NSMenuItem(
-                title: t.displayName, action: #selector(AppDelegate.setTheme(_:)),
-                keyEquivalent: "")
-            item.target = target
-            item.representedObject = t.rawValue
-            item.state = (Settings.theme == t) ? .on : .off
-            sub.addItem(item)
-        }
-        parent.submenu = sub
-        return parent
-    }
-
-    private func opacitySubmenu(target: AppDelegate) -> NSMenuItem {
-        let parent = NSMenuItem(title: "Opacity", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for opt in OpacityChoice.options {
-            let item = NSMenuItem(
-                title: opt.label, action: #selector(AppDelegate.setOpacity(_:)),
-                keyEquivalent: "")
-            item.target = target
-            item.representedObject = opt.value
-            item.state = abs(Settings.opacity - opt.value) < 0.01 ? .on : .off
-            sub.addItem(item)
-        }
-        parent.submenu = sub
-        return parent
-    }
-
-    private func intervalSubmenu(target: AppDelegate) -> NSMenuItem {
-        let parent = NSMenuItem(title: "Refresh Every", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for opt in RefreshChoice.options {
-            let item = NSMenuItem(
-                title: opt.label, action: #selector(AppDelegate.setInterval(_:)),
-                keyEquivalent: "")
-            item.target = target
-            item.representedObject = opt.seconds
-            item.state = (Settings.refreshInterval == opt.seconds) ? .on : .off
-            sub.addItem(item)
-        }
-        parent.submenu = sub
-        return parent
+        sevenDayBlock.refreshCountdown()
     }
 }
 
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var panel: FloatingPanel!
-    var content: ContentView!
-    var fetchTimer: Timer?
-    var countdownTimer: Timer?
-
-    private let fullHeight: CGFloat = sc(192)
-    private let compactHeight: CGFloat = sc(42)
-    private let windowWidth: CGFloat = sc(170)
+    private var statusItem: NSStatusItem!
+    private let usageView = StatusBarUsageView()
+    private let popover = NSPopover()
+    private var popoverView: PopoverView!
+    private var fetchTimer: Timer?
+    private var countdownTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        panel = FloatingPanel()
-        content = ContentView(frame: panel.contentRect(forFrameRect: panel.frame))
-        content.appDelegate = self
-        panel.contentView = content
-        content.applyTheme(Settings.theme)
-        content.applyOpacity(Settings.opacity)
-        sizeWindow(for: Settings.viewMode, animate: false)
-        panel.orderFront(nil)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.addSubview(usageView)
+            NSLayoutConstraint.activate([
+                usageView.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 6),
+                usageView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            ])
+            button.target = self
+            button.action = #selector(togglePopover)
+        }
+        updateStatusLength()
 
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowMoved(_:)),
-            name: NSWindow.didMoveNotification, object: panel)
+        popoverView = PopoverView(appDelegate: self)
+        let vc = NSViewController()
+        vc.view = popoverView
+        popover.contentViewController = vc
+        popover.behavior = .transient
 
         refresh()
         restartFetchTimer()
 
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) {
             [weak self] _ in
-            self?.content.tickCountdowns()
+            self?.usageView.refreshCountdown()
+            self?.popoverView.tickCountdowns()
+            self?.updateStatusLength()
         }
     }
 
-    @objc func windowMoved(_ notification: Notification) {
-        Settings.savedOrigin = panel.frame.origin
+    private func updateStatusLength() {
+        usageView.layoutSubtreeIfNeeded()
+        statusItem.length = usageView.fittingSize.width + 12
+    }
+
+    @objc func togglePopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            refresh()
+            popoverView.syncIntervalSelection()
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
     }
 
     func restartFetchTimer() {
@@ -647,7 +641,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func refresh() {
         fetchUsage { [weak self] usage in
-            self?.content.update(usage)
+            guard let self = self else { return }
+            self.usageView.update(usage?.fiveHour)
+            self.popoverView.update(usage)
+            self.updateStatusLength()
         }
     }
 
@@ -655,47 +652,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
     }
 
-    @objc func toggleAlwaysOnTop() {
-        let on = !Settings.alwaysOnTop
-        Settings.alwaysOnTop = on
-        panel.level = on ? .floating : .normal
-    }
-
-    @objc func toggleCompact() {
-        let next: ViewMode = Settings.viewMode == .full ? .compact : .full
-        Settings.viewMode = next
-        content.applyMode(next)
-        sizeWindow(for: next, animate: true)
-    }
-
-    func sizeWindow(for mode: ViewMode, animate: Bool) {
-        let target = NSSize(
-            width: windowWidth, height: mode == .compact ? compactHeight : fullHeight)
-        // Anchor the top edge so visual top stays put when resizing.
-        let frame = panel.frame
-        let newFrame = NSRect(
-            x: frame.minX, y: frame.maxY - target.height,
-            width: target.width, height: target.height)
-        panel.setFrame(newFrame, display: true, animate: animate)
-    }
-
-    @objc func setTheme(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let theme = Theme(rawValue: raw)
-        else { return }
-        Settings.theme = theme
-        content.applyTheme(theme)
-    }
-
-    @objc func setInterval(_ sender: NSMenuItem) {
-        guard let interval = sender.representedObject as? TimeInterval else { return }
+    @objc func setInterval(_ sender: NSPopUpButton) {
+        guard let interval = sender.selectedItem?.representedObject as? TimeInterval else { return }
         Settings.refreshInterval = interval
         restartFetchTimer()
-    }
-
-    @objc func setOpacity(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? Double else { return }
-        Settings.opacity = value
-        content.applyOpacity(value)
     }
 }
 
