@@ -3,6 +3,13 @@
 
 import Cocoa
 
+// MARK: - UI scale
+
+/// Global UI scale factor. Multiply every hard-coded font size and dimension by
+/// this so the whole widget grows/shrinks together. Bump to enlarge the widget.
+let uiScale: CGFloat = 1.2
+@inline(__always) func sc(_ v: CGFloat) -> CGFloat { (v * uiScale).rounded() }
+
 // MARK: - Settings
 
 enum Theme: String, CaseIterable {
@@ -260,34 +267,34 @@ final class MetricBlock {
         titleLabel.textColor = .labelColor
         titleLabel.font =
             layout == .full
-            ? .systemFont(ofSize: 11, weight: .semibold)
-            : .systemFont(ofSize: 10, weight: .regular)
+            ? .systemFont(ofSize: sc(11), weight: .semibold)
+            : .systemFont(ofSize: sc(10), weight: .regular)
         titleLabel.lineBreakMode = .byTruncatingTail
 
-        subtitleLabel.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        subtitleLabel.font = .monospacedDigitSystemFont(ofSize: sc(9), weight: .regular)
         subtitleLabel.textColor = .secondaryLabelColor
 
-        let iconCfg = NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold)
+        let iconCfg = NSImage.SymbolConfiguration(pointSize: sc(8), weight: .semibold)
         subtitleIcon.image = NSImage(
             systemSymbolName: "arrow.clockwise", accessibilityDescription: "resets in"
         )?.withSymbolConfiguration(iconCfg)
         subtitleIcon.contentTintColor = .tertiaryLabelColor
         subtitleIcon.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            subtitleIcon.widthAnchor.constraint(equalToConstant: 8),
-            subtitleIcon.heightAnchor.constraint(equalToConstant: 8),
+            subtitleIcon.widthAnchor.constraint(equalToConstant: sc(8)),
+            subtitleIcon.heightAnchor.constraint(equalToConstant: sc(8)),
         ])
 
-        pctLabel.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        pctLabel.font = .monospacedDigitSystemFont(ofSize: sc(9), weight: .regular)
         pctLabel.textColor = .secondaryLabelColor
         pctLabel.alignment = .right
 
         bar.translatesAutoresizingMaskIntoConstraints = false
         pctLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            bar.widthAnchor.constraint(equalToConstant: 56),
-            bar.heightAnchor.constraint(equalToConstant: 4),
-            pctLabel.widthAnchor.constraint(equalToConstant: 26),
+            bar.widthAnchor.constraint(equalToConstant: sc(56)),
+            bar.heightAnchor.constraint(equalToConstant: sc(4)),
+            pctLabel.widthAnchor.constraint(equalToConstant: sc(26)),
         ])
 
         let leftGroup: NSView
@@ -295,24 +302,24 @@ final class MetricBlock {
             let subtitleStack = NSStackView(views: [subtitleIcon, subtitleLabel])
             subtitleStack.orientation = .horizontal
             subtitleStack.alignment = .centerY
-            subtitleStack.spacing = 2
+            subtitleStack.spacing = sc(2)
             let vstack = NSStackView(views: [titleLabel, subtitleStack])
             vstack.orientation = .vertical
             vstack.alignment = .leading
-            vstack.spacing = 1
+            vstack.spacing = sc(1)
             leftGroup = vstack
         } else {
             leftGroup = titleLabel
         }
         leftGroup.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            leftGroup.widthAnchor.constraint(equalToConstant: 60),
+            leftGroup.widthAnchor.constraint(equalToConstant: sc(60)),
         ])
 
         view = NSStackView(views: [leftGroup, bar, pctLabel])
         view.orientation = .horizontal
         view.alignment = .centerY
-        view.spacing = 5
+        view.spacing = sc(5)
     }
 
     func update(_ bucket: Usage.Bucket) {
@@ -356,7 +363,7 @@ final class MetricBlock {
 
 final class FloatingPanel: NSPanel {
     init() {
-        let size = NSSize(width: 170, height: 158)
+        let size = NSSize(width: sc(170), height: sc(192))
         super.init(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -399,7 +406,7 @@ final class ContentView: NSView {
 
     static func makeSectionHeader(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 8, weight: .bold)
+        label.font = .systemFont(ofSize: sc(8), weight: .bold)
         label.textColor = .tertiaryLabelColor
         return label
     }
@@ -407,7 +414,7 @@ final class ContentView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = sc(10)
         layer?.masksToBounds = true
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.4).cgColor
@@ -420,8 +427,8 @@ final class ContentView: NSView {
 
         mainStack.orientation = .vertical
         mainStack.alignment = .leading
-        mainStack.spacing = 3
-        mainStack.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        mainStack.spacing = sc(3)
+        mainStack.edgeInsets = NSEdgeInsets(top: sc(10), left: sc(10), bottom: sc(10), right: sc(10))
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mainStack)
         NSLayoutConstraint.activate([
@@ -439,12 +446,12 @@ final class ContentView: NSView {
         mainStack.addArrangedSubview(opusBlock.view)
         mainStack.addArrangedSubview(oauthBlock.view)
 
-        mainStack.setCustomSpacing(2, after: planUsageHeader)
-        mainStack.setCustomSpacing(8, after: fiveHourBlock.view)
-        mainStack.setCustomSpacing(2, after: weeklyHeader)
-        mainStack.setCustomSpacing(5, after: sevenDayBlock.view)
-        mainStack.setCustomSpacing(3, after: sonnetBlock.view)
-        mainStack.setCustomSpacing(3, after: opusBlock.view)
+        mainStack.setCustomSpacing(sc(5), after: planUsageHeader)
+        mainStack.setCustomSpacing(sc(13), after: fiveHourBlock.view)
+        mainStack.setCustomSpacing(sc(5), after: weeklyHeader)
+        mainStack.setCustomSpacing(sc(10), after: sevenDayBlock.view)
+        mainStack.setCustomSpacing(sc(8), after: sonnetBlock.view)
+        mainStack.setCustomSpacing(sc(8), after: opusBlock.view)
 
         applyTheme(Settings.theme)
         applyOpacity(Settings.opacity)
@@ -596,9 +603,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var fetchTimer: Timer?
     var countdownTimer: Timer?
 
-    private let fullHeight: CGFloat = 158
-    private let compactHeight: CGFloat = 42
-    private let windowWidth: CGFloat = 170
+    private let fullHeight: CGFloat = sc(192)
+    private let compactHeight: CGFloat = sc(42)
+    private let windowWidth: CGFloat = sc(170)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)

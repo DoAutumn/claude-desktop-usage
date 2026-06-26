@@ -207,6 +207,35 @@ def _cookie_header(cookies: dict[str, str]) -> str:
     return "; ".join(f"{k}={v}" for k, v in cookies.items() if k != "lastActiveOrg")
 
 
+def _system_proxy() -> str | None:
+    """Return the macOS system HTTPS proxy as a URL, or None.
+
+    cf_clearance is bound to the egress IP that issued it. Claude.app uses the
+    macOS *system* proxy, so its cookie is tied to that proxy's IP. curl only
+    honors proxy *environment variables*, not the system network settings — so
+    when this script runs from a GUI launch (no proxy env vars) curl would go
+    direct, land on a different IP, and Cloudflare would reject it (302/403).
+    We bridge that gap by reading the system proxy and handing it to curl.
+    """
+    # An explicit env proxy wins; curl already honors it, so don't override.
+    for var in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        if os.environ.get(var):
+            return None
+    r = subprocess.run(["scutil", "--proxy"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    fields: dict[str, str] = {}
+    for line in r.stdout.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            fields[k.strip()] = v.strip()
+    if fields.get("HTTPSEnable") == "1" and fields.get("HTTPSProxy"):
+        host = fields["HTTPSProxy"]
+        port = fields.get("HTTPSPort", "")
+        return f"http://{host}:{port}" if port else f"http://{host}"
+    return None
+
+
 def _curl_get(url: str, cookie_header: str) -> tuple[int, bytes]:
     """GET via system curl. urllib's TLS handshake is identifiable as Python
     and trips Cloudflare's bot check; macOS's curl uses LibreSSL + ALPN +
@@ -221,6 +250,12 @@ def _curl_get(url: str, cookie_header: str) -> tuple[int, bytes]:
             "--http2",
             "-o", body_path,
             "-w", "%{http_code}",
+        ]
+        proxy = _system_proxy()
+        if proxy:
+            _debug(f"using system proxy: {proxy}")
+            cmd += ["-x", proxy]
+        cmd += [
             "-H", f"User-Agent: {USER_AGENT}",
             "-H", "Accept: application/json, text/plain, */*",
             "-H", "Accept-Language: en-US,en;q=0.9",

@@ -20,7 +20,12 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"
 
 echo "==> Compiling Swift binary"
-swiftc -O -o "$APP/Contents/MacOS/claude-usage" "$ROOT/float_widget.swift"
+# Pin the deployment target so the produced Mach-O is usable on older macOS.
+# Without -target, swiftc embeds the build machine's SDK minimum (e.g. macOS 15),
+# which makes Launch Services reject the app on macOS 14.x and earlier.
+DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-11.0}"
+swiftc -O -target "$(uname -m)-apple-macos${DEPLOYMENT_TARGET}" \
+    -o "$APP/Contents/MacOS/claude-usage" "$ROOT/float_widget.swift"
 
 echo "==> Bundling Python scripts"
 cp "$ROOT/claude_usage.py" "$APP/Contents/Resources/"

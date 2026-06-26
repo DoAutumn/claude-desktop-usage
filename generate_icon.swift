@@ -17,15 +17,38 @@ let sizes: [(px: Int, name: String)] = [
     (1024, "icon_512x512@2x.png"),
 ]
 
+// Superellipse (squircle) path: |x|^n + |y|^n = 1, sampled around the rect.
+// n≈5 matches the macOS Big Sur+ continuous-corner look far better than a plain
+// rounded rectangle (whose corners read as too square).
+func superellipsePath(in rect: NSRect, n: CGFloat = 5) -> NSBezierPath {
+    let a = rect.width / 2, b = rect.height / 2
+    let cx = rect.midX, cy = rect.midY
+    let path = NSBezierPath()
+    let steps = 720
+    for i in 0...steps {
+        let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
+        let ct = cos(t), st = sin(t)
+        let x = cx + a * copysign(pow(abs(ct), 2 / n), ct)
+        let y = cy + b * copysign(pow(abs(st), 2 / n), st)
+        if i == 0 { path.move(to: NSPoint(x: x, y: y)) }
+        else { path.line(to: NSPoint(x: x, y: y)) }
+    }
+    path.close()
+    return path
+}
+
 func drawIcon(size: CGFloat) -> NSImage {
     let img = NSImage(size: NSSize(width: size, height: size))
     img.lockFocus()
     defer { img.unlockFocus() }
 
-    // 1. Rounded background (Big Sur+ icon radius ratio is ~22.37%).
-    let radius = size * 0.2237
-    let bgRect = NSRect(x: 0, y: 0, width: size, height: size)
-    let bgPath = NSBezierPath(roundedRect: bgRect, xRadius: radius, yRadius: radius)
+    // 1. Inset the body so it occupies ~82% of the canvas (≈9% transparent
+    //    margin per side). Filling the whole canvas makes the icon look
+    //    oversized next to stock macOS icons in the Dock.
+    let margin = size * 0.09
+    let body = NSRect(x: margin, y: margin,
+                      width: size - 2 * margin, height: size - 2 * margin)
+    let bgPath = superellipsePath(in: body)
     bgPath.addClip()
 
     // Gradient: deep indigo → violet (top to bottom).
@@ -35,18 +58,18 @@ func drawIcon(size: CGFloat) -> NSImage {
     ])!
     gradient.draw(in: bgPath, angle: -90)
 
-    // 2. Three usage bars centered, varying heights.
+    // 2. Three usage bars centered within the body, varying heights.
     let bars: [CGFloat] = [0.28, 0.45, 0.62]  // relative heights
-    let barWidth = size * 0.13
-    let spacing = size * 0.05
+    let barWidth = body.width * 0.13
+    let spacing = body.width * 0.05
     let totalWidth = barWidth * 3 + spacing * 2
-    let startX = (size - totalWidth) / 2
-    let baseY = size * 0.30
+    let startX = body.minX + (body.width - totalWidth) / 2
+    let baseY = body.minY + body.height * 0.30
     let barRadius = barWidth * 0.35
     NSColor.white.withAlphaComponent(0.96).setFill()
     for (i, h) in bars.enumerated() {
         let x = startX + CGFloat(i) * (barWidth + spacing)
-        let barHeight = size * h
+        let barHeight = body.height * h
         let rect = NSRect(x: x, y: baseY, width: barWidth, height: barHeight)
         NSBezierPath(roundedRect: rect, xRadius: barRadius, yRadius: barRadius).fill()
     }
